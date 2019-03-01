@@ -53,33 +53,33 @@ vm.$mount()定义在'src/platforms/web/runtime/index.js'中，这里主要是对
 这里先简单讲一下watcher的概念，可以理解为watcher是为了监听某些操作的发生而创建，当这些操作发生时，就会通知watcher，执行相应的操作。
 在Vue里面有这样的几种watcher，它们都是通过new Watcher的时候传入不同的参数来创建的:
 
-  // Watcher定义在'src/core/observer/watcher.js'下
+    // Watcher定义在'src/core/observer/watcher.js'下
 
-  renderWatcher   // 监听组件更新，执行组件重新渲染的操作
-  userWatcher     // 在组件里面通过watch属性、或者$watch方法创建的，当监听的数据改变时，执行我们定义的回调函数
-  computedWatcher // 在组件里面通过computed属性创建，当计算属性的依赖值改变时，对计算属性重新求值
+    renderWatcher   // 监听组件更新，执行组件重新渲染的操作
+    userWatcher     // 在组件里面通过watch属性、或者$watch方法创建的，当监听的数据改变时，执行我们定义的回调函数
+    computedWatcher // 在组件里面通过computed属性创建，当计算属性的依赖值改变时，对计算属性重新求值
 
 而这里我们创建的就是renderWatcher，在首次创建、以及组件重新渲染时，就会调用我们传入的updateComponent函数。
 
 
 ### updateComponent
 
-  updateComponent = () => {
-    vm._update(vm._render(), hydrating)
-  }
+    updateComponent = () => {
+      vm._update(vm._render(), hydrating)
+    }
 
 updateComponent执行的是_update()方法，它会传入_render()方法的返回值作为参数，这里只需知道，当组件重新渲染时，就会调用updateComponent
 
 ### _render
 
-  const { render, _parentVnode } = vm.$options
-  ...
-  vm.$vnode = _parentVnode
-  ...
-  vnode = render.call(vm._renderProxy, vm.$createElement)
-  ...
-  vnode.parent = _parentVnode
-  return vnode
+    const { render, _parentVnode } = vm.$options
+    ...
+    vm.$vnode = _parentVnode
+    ...
+    vnode = render.call(vm._renderProxy, vm.$createElement)
+    ...
+    vnode.parent = _parentVnode
+    return vnode
 
 _render其实很简单，就是拿到我们定义在组件的render方法，并且执行它，通过执行render方法得到vnode。[webpack]
 这里我们可以打印一下render函数出来看看，
