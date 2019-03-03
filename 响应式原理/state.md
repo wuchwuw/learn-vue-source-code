@@ -36,6 +36,7 @@
 ### observe
 
 observe方法主要做了几件事:
+
 1、判断data上面是不是有__ob__这个对象，如果有则直接返回
 2、判断data有没有符合成为响应式对象的条件
 
@@ -200,7 +201,7 @@ ps: 在组件中watch属性创建的watcher也会push到targetStack中，之后�
       }
     }
 
-根据我们上面的分析Dep.target是当前组件的渲染watcher，我们可以看到这里调用了wacher的addDep属性，
+根据我们上面的分析Dep.target是当前组件的渲染watcher，我们可以看到这里调用了wacher的addDep属性，
 然后把当前的dep传入了。
 
     // watcher
