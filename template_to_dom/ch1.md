@@ -23,7 +23,7 @@
 
 ### _init()
 
-_init方法中可以省略直接看到最后，这里判断了是否在options上定义了el属性，如果定义了则调用vm.$mount(vm.$options.el)
+_init方法中可以省略直接看到最后，这里判断了是否在options上定义了el属性，如果定义了则调用vm.$mount()
 
     if (vm.$options.el) {
       vm.$mount(vm.$options.el)
