@@ -219,3 +219,4 @@ ps: 在组件中watch属性创建的watcher也会push到targetStack中，之后�
 只需要知道通过dep.depend，dep将渲染watcher保存在自身的subs属性上，而渲染watcher将dep保存在自身的
 deps上。这就完成了依赖的收集。
 
+##
