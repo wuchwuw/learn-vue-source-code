@@ -1,6 +1,6 @@
-## new Vue到Dom呈现到页面之间到底发生了什么
+## new Vue到Dom呈现到页面之间到底发生了什么
 
-在我们找到Vue的定义之后，可以看到当我们new Vue时，Vue内部调用了_init方法。
+在我们找到Vue的定义之后，可以看到当我们new Vue时，Vue内部调用了_init方法。
 
     function Vue (options) {
       if (process.env.NODE_ENV !== 'production' &&

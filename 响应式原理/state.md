@@ -5,7 +5,7 @@
 这里先放一张Vue官网对响应式原理说明。
 ![响应式原理](../images/data.png)
 从图中我们可以大致的了解整个响应式原理的过程，当组件创建的过程中，会把我们定义在组件上的data变成响应式对象，也就是通过Object.defineProperty为对象添加getter和setter(图中紫色圈圈部分)，当组件渲染时，就会访问到我们定义在template中的响应式数据(图中的"touch")，这时就会触发数据的getter从而收集依赖(图中的collect as Dependency),当我们对数据进行更改时，会触发setter，从而执行dep.notify通知watcher执行组件的重新渲染。
-接下来我们就从响应式对象的创建开始，来分析Vue的响应式原理
+接下来我们就从响应式对象的创建开始，来分析Vue的响应式原理。
 
 ### 响应式对象的创建
 
@@ -26,8 +26,8 @@
       initWatch(vm, opts.watch)
     }
 
-这个方法很简单，就是分别拿到组件options的props、methods、data、computed、watch，分别执行它们对应的init方法。
-这里我们先看initData
+这个方法很简单，就是分别拿到组件options的props、methods、data、computed、watch，分别执行它们对应的init方法，
+这里我们先看initData。
 
 ### initData
 
