@@ -189,7 +189,7 @@ Dep.target就是父组件的渲染watcher，如果渲染的过程中有子组件
 
 ps: 在组件中watch属性创建的watcher也会push到targetStack中，之后分析watch的时候会说到。
 
-### dep.depend
+#### dep.depend
 
 回看上面的defineReactive函数，每次调用时都会创建一个dep的实例，之前我们也说过，这个是用来链接
 数据和watcher的桥梁。这里调用了dep.depend:
@@ -220,4 +220,211 @@ ps: 在组件中watch属性创建的watcher也会push到targetStack中，之后�
 只需要知道通过dep.depend，dep将渲染watcher保存在自身的subs属性上，而渲染watcher将dep保存在自身的
 deps上。这就完成了依赖的收集。
 
-##
+### 派发更新
+
+    set: function reactiveSetter (newVal) {
+      const value = getter ? getter.call(obj) : val
+      /* eslint-disable no-self-compare */
+      if (newVal === value || (newVal !== newVal && value !== value)) {
+        return
+      }
+      /* eslint-enable no-self-compare */
+      if (process.env.NODE_ENV !== 'production' && customSetter) {
+        customSetter()
+      }
+      if (setter) {
+        setter.call(obj, newVal)
+      } else {
+        val = newVal
+      }
+      childOb = !shallow && observe(newVal)
+      dep.notify()
+    }
+
+当我们修改响应式数据时，会触发数据的setter，如果设置的新值也是一个对象或者数组的话，就会再次调用observe将数据变成响应式对象，
+并且调用dep.notify触发组件重新渲染。
+
+
+#### dep.notify
+
+    notify () {
+      // stabilize the subscriber list first
+      const subs = this.subs.slice()
+      for (let i = 0, l = subs.length; i < l; i++) {
+        subs[i].update()
+      }
+    }
+
+可以看到dep.notify就是遍历subs中保存的所有watcher，并调用它们的update方法。
+
+#### watcher.update
+
+    if (this.computed) {
+      if (this.dep.subs.length === 0) {
+        this.dirty = true
+      } else {
+        this.getAndInvoke(() => {
+          this.dep.notify()
+        })
+      }
+    } else if (this.sync) {
+      this.run()
+    } else {
+      queueWatcher(this)
+    }
+
+因为我们这里调用的是渲染watcher的update，所以this.computed、this.sync都是false，这里直接执行queueWatcher并传入渲染watcher。
+
+### queueWatcher
+
+    function queueWatcher (watcher: Watcher) {
+      const id = watcher.id
+      if (has[id] == null) {
+        has[id] = true
+        if (!flushing) {
+          queue.push(watcher)
+        } else {
+          // if already flushing, splice the watcher based on its id
+          // if already past its id, it will be run next immediately.
+          let i = queue.length - 1
+          while (i > index && queue[i].id > watcher.id) {
+            i--
+          }
+          queue.splice(i + 1, 0, watcher)
+        }
+        // queue the flush
+        if (!waiting) {
+          waiting = true
+          nextTick(flushSchedulerQueue)
+        }
+      }
+    }
+
+我们都知道，在Vue中数据的变更到组件的重新渲染是一个异步的过程。这是因为如果每次数据变更都去重新渲染组件，这样是很消耗性能的，
+所以Vue在这里通过一个队列来保存所有即将要更新的watcher，并在下一个tick中一次性更新。所以这里我们可以看到，flushing是一个标志位，
+代表着是否正在遍历这个队列，如果不是的话，则直接将watcher push到队列中。当队列正在被遍历时，这时如果又有新的watcher进来，则从队列的最后
+开始遍历，找到一个id比即将要插入的watcher的id更小的位置，然后将即将要插入的watcher插到它的后面，之所以要这样做，是因为队列里的所有watcher在
+被遍历之前，都有一个根据id从小到大排列的操作。为什么要从小到大排列，在flushSchedulerQueue函数里面有说明。
+
+#### flushSchedulerQueue
+
+    function flushSchedulerQueue () {
+      // Sort queue before flush.
+      // This ensures that:
+      // 1. Components are updated from parent to child. (because parent is always
+      //    created before the child)
+      // 2. A component's user watchers are run before its render watcher (because
+      //    user watchers are created before the render watcher)
+      // 3. If a component is destroyed during a parent component's watcher run,
+      //    its watchers can be skipped.
+      queue.sort((a, b) => a.id - b.id)
+
+      // do not cache length because more watchers might be pushed
+      // as we run existing watchers
+      for (index = 0; index < queue.length; index++) {
+        watcher = queue[index]
+        if (watcher.before) {
+          watcher.before()
+        }
+        ...
+        watcher.run()
+        ...
+      }
+
+在遍历队列之前，先对队列里的watcher进行根据id从小到大的排列，通过Vue这里注释的解释可以看到Vue为什么要这样做:
+
+1、 组件的更新都是由父到子的(父组件总是在子组件之前被创建)
+
+2、 组件内定义的userWatcher要比组件的渲染watcher先执行(user watcher总是在render watcher之前被创建)
+
+3、 如果一个组件在它的父组件执行watcher的期间被销毁，那么可以跳过这个组件的watcher。
+
+在排序之后，就遍历队列，可以注意到每次循环都去拿到queue.length，这是因为在遍历的过程中有可能有新的watcher进来，队列的长度会改变。
+渲染watcher是没有before函数的，所以直接执行watcher.run()
+
+#### watcher.run
+
+    run () {
+      if (this.active) {
+        this.getAndInvoke(this.cb)
+      }
+    }
+
+渲染watcher的cb属性是空。
+
+#### getAndInvoke
+
+    const value = this.get()
+
+    // 因为渲染watcher调用get的返回值都是undefined，所以getAndInvoke方法只执行到了这里，接下来的逻辑是computed和user watcher的。
+
+在getAndInvoke中可以看到，再次调用了get方法:
+
+    pushTarget(this)
+    ...
+    value = this.getter.call(vm, vm)
+    ...
+    popTarget()
+
+在get方法里面会再次调用watcher的getter方法，之前我们也分析过getter就是传入的updateComponent，所以再次执行updateComponent又会
+再次调用render函数，重新渲染。
+
+### nextTick
+
+之前分析到flushSchedulerQueue时，我们可以看到flushSchedulerQueue是传入nextTick函数里执行的。而在日常的开发中，我们也经常遇到，比如说，修改了
+数据，可以看到界面上的DOM是更新了，但是我们获取的DOM却没有更新，根据官网的教程:
+
+    var vm = new Vue({
+      el: '#example',
+      data: {
+        message: '123'
+      }
+    })
+    vm.message = 'new message' // 更改数据
+    vm.$el.textContent === 'new message' // false
+    Vue.nextTick(function () {
+      vm.$el.textContent === 'new message' // true
+    })
+
+可以看到，Vue建议我们将DOM操作放到$nextTick中来保证获取的DOM是最新的。那么为什么在$nextTick中获取的DOM就是更新之后的呢，在分析nextTick之前，希望你
+可以先了解一下javascript的事件循环机制。
+
+    function nextTick (cb?: Function, ctx?: Object) {
+      let _resolve
+      callbacks.push(() => {
+        if (cb) {
+          try {
+            cb.call(ctx)
+          } catch (e) {
+            handleError(e, ctx, 'nextTick')
+          }
+        } else if (_resolve) {
+          _resolve(ctx)
+        }
+      })
+      if (!pending) {
+        pending = true
+        if (useMacroTask) {
+          macroTimerFunc()
+        } else {
+          microTimerFunc()
+        }
+      }
+      // $flow-disable-line
+      if (!cb && typeof Promise !== 'undefined') {
+        return new Promise(resolve => {
+          _resolve = resolve
+        })
+      }
+    }
+
+可以看到在同一个tick中调用nextTick方法时，都是将传入的函数push到callbacks中，然后执行macroTimerFunc或者microTimerFunc。
+
+macroTimerFunc走的是宏任务，在Vue中做了以下的兼容，setImmediate -> MessageChannel -> setTimeout 优先级从左到右。
+
+microTimerFunc走的是微任务，调用的是Promise.then。
+
+不管执行macroTimerFunc或者microTimerFunc，最后都是遍历callbacks中的所有方法，并执行。这也解释了为什么需要将DOM操作放在nextTick中，
+因为当我们修改数据时，首先会触发重新渲染，并将flushSchedulerQueue放入到nextTick中等待执行，此时如果我们直接执行DOM操作，那么DOM操作在组件
+重新渲染之前已经执行了，而如果把DOM操作放到nextTick中，它将和flushSchedulerQueue一起被放进callbacks中顺序执行，这样就确保了我们的DOM操作
+是在组件更新之后执行的。
