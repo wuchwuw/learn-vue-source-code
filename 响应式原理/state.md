@@ -29,11 +29,11 @@
 这个方法很简单，就是分别拿到组件options的props、methods、data、computed、watch，分别执行它们对应的init方法，
 这里我们先看initData。
 
-### initData
+#### initData
 
 首先，拿到data并且校验了props和methods上的key是不是和data上有重复。校验之后调用了observe方法，就是通过这个方法来创建响应式对象的。
 
-### observe
+#### observe
 
 observe方法主要做了几件事:
 
@@ -69,7 +69,7 @@ observer
 而且这里还有另一个类，Dep，这个类可以说是连接数据和Watcher的一个桥梁。后面我们会介绍，这里只需知道__ob__上有一个dep属性。
 接下来，判断传入的数据是数组还是对象，如果是对象，则调用walk，如果是数组，则调用observeArray，这里先分析对象的。
 
-### walk
+#### walk
 
     const keys = Object.keys(obj)
     for (let i = 0; i < keys.length; i++) {
@@ -340,7 +340,7 @@ deps上。这就完成了依赖的收集。
 3、 如果一个组件在它的父组件执行watcher的期间被销毁，那么可以跳过这个组件的watcher。
 
 在排序之后，就遍历队列，可以注意到每次循环都去拿到queue.length，这是因为在遍历的过程中有可能有新的watcher进来，队列的长度会改变。
-渲染watcher是没有before函数的，所以直接执行watcher.run()
+如果watcher有before函数，则先执行before，然后执行watcher.run()
 
 #### watcher.run
 
@@ -371,8 +371,8 @@ deps上。这就完成了依赖的收集。
 
 ### nextTick
 
-之前分析到flushSchedulerQueue时，我们可以看到flushSchedulerQueue是传入nextTick函数里执行的。而在日常的开发中，我们也经常遇到，比如说，修改了
-数据，可以看到界面上的DOM是更新了，但是我们获取的DOM却没有更新，根据官网的教程:
+之前分析到flushSchedulerQueue时，我们可以看到flushSchedulerQueue是传入nextTick函数里执行的。而在日常的开发中，我们也经常遇到，比如说，修改了
+数据，可以看到界面上的DOM是更新了，但是我们获取的DOM却不是最新的，根据官网的教程:
 
     var vm = new Vue({
       el: '#example',

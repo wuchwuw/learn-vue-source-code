@@ -6,7 +6,7 @@
 
 #### render
 
-上一篇我们分析到，在一个组件初始化的过程中，会创建渲染watcher，并调用render函数来生成vnode，在执行render函数的过程中，
+在一个组件初始化的过程中，会创建渲染watcher，并调用render函数来生成vnode，在执行render函数的过程中，
 会调用实例上_c这个方法，也就是createElement，createElement对传入的参数进行处理，并调用_createElement。
 
 #### _createElement
