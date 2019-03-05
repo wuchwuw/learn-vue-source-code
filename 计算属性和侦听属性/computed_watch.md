@@ -109,4 +109,35 @@ evaluate方法调用了get方法得到计算属性的值，并返回。
 
 ### 计算属性更新
 
+当计算属性依赖的值改变时，计算属性会重新计算。比如现在有一个计算属性a，它依赖了b:
 
+    computed: {
+      a () {
+        return thia.b + 1
+      }
+    }
+
+那么当我们访问a属性时，会执行定义在cumputed上的a这个方法，并返回this.b + 1的值，这个时候就会访问到依赖b的值并触发b的getter，从而b的dep就会订阅computed
+watcher，把computed watcher保存到属性b的dep中。当b更改时，触发b的setter，执行dep.notify，此时就会触发computed watcher的update方法，重新计算计算属性
+的值。
+
+#### update
+
+    update () {
+      if (this.computed) {
+        if (this.dep.subs.length === 0) {
+          this.dirty = true
+        } else {
+          this.getAndInvoke(() => {
+            this.dep.notify()
+          })
+        }
+      } else if (this.sync) {
+        this.run()
+      } else {
+        queueWatcher(this)
+      }
+    }
+
+这跟渲染watcher重新渲染调用的是同个方法，不过computed watcher走的是computed为true的分支，这里Vue根据computed watcher的dep属性的subs中有没有值，来走不同的逻辑
+当computed的值改变会触发其他watcher的update时，会调用this.getAndInvoke，并执行回调this.dep.notify来触发更新，如果subs中没有值，则只是将dirty置为true，让computed可以重新计算。
