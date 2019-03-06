@@ -140,4 +140,214 @@ watcher，把computed watcher保存到属性b的dep中。当b更改时，触发b
     }
 
 这跟渲染watcher重新渲染调用的是同个方法，不过computed watcher走的是computed为true的分支，这里Vue根据computed watcher的dep属性的subs中有没有值，来走不同的逻辑
-当computed的值改变会触发其他watcher的update时，会调用this.getAndInvoke，并执行回调this.dep.notify来触发更新，如果subs中没有值，则只是将dirty置为true，让computed可以重新计算。
+当computed的值改变会触发其他watcher的update时，会调用this.getAndInvoke，并执行回调this.dep.notify来触发更新，如果subs中没有值，则computed并不会重新计算，只是将dirty置为true。
+
+#### getAndInvoke
+
+    getAndInvoke (cb: Function) {
+      const value = this.get()
+      if (
+        value !== this.value ||
+        isObject(value) ||
+        this.deep
+      ) {
+        // set new value
+        const oldValue = this.value
+        this.value = value
+        this.dirty = false
+        ...
+        cb.call(this.vm, value, oldValue)
+      }
+    }
+
+当computed的值改变会触发其他watcher的update时，会通过get方法重新计算computed的值，并与旧值进行对比，只有当新旧值不同时，computed才会调用cb，也就是this.dep.notify去触发依赖computed的其他值的更新。
+
+也就是说，computed本身是一个watcher，可以被它的依赖值订阅，当它的依赖值改变时，会触发它的更新。computed也可以是一个被依赖的值(具有dep属性)，当它在模板中
+使用，或者被watch时，computed的改变就会触发它的dep属性里的watcher的更新。
+
+所以可以总结一下computed的几个特性:
+
+1、只有当computed被访问时，才去计算它的值。
+
+2、当新旧值不同时，才触发重新渲染。
+
+### 侦听属性
+
+Vue提供了侦听属性，让我们可以在数据变更的时候执行一些操作，侦听属性的值可以是一个函数，也可以是一个对象:
+
+    watch: {                         watch: {
+      a (val, oldVal) {}               a: {
+    }                                    handler (val, oldVal) {},
+                                         deep,
+                                         immediate,
+                                         sync
+                                       }
+    
+#### initWatch
+
+    for (const key in watch) {
+      const handler = watch[key]
+      if (Array.isArray(handler)) {
+        for (let i = 0; i < handler.length; i++) {
+          createWatcher(vm, key, handler[i])
+        }
+      } else {
+        createWatcher(vm, key, handler)
+      }
+    }
+
+    if (isPlainObject(handler)) {
+      options = handler
+      handler = handler.handler
+    }
+    if (typeof handler === 'string') {
+      handler = vm[handler]
+    }
+
+    return vm.$watch(expOrFn, handler, options)
+
+首先遍历watch上的所有key，拿到watch的定义传入createWatcher，通过createWatcher来处理一下参数，定义是一个对象，就拿对象的handler属性，
+并把对象当做options传入，通过调用$watch来创建user watcher
+
+#### $watch
+
+    Vue.prototype.$watch = function (
+      expOrFn: string | Function,
+      cb: any,
+      options?: Object
+    ): Function {
+      const vm: Component = this
+      if (isPlainObject(cb)) {
+        return createWatcher(vm, expOrFn, cb, options)
+      }
+      options = options || {}
+      options.user = true
+      const watcher = new Watcher(vm, expOrFn, cb, options)
+      if (options.immediate) {
+        cb.call(vm, watcher.value)
+      }
+      return function unwatchFn () {
+        watcher.teardown()
+      }
+    }
+
+可以看到$watch也是通过new Watcher来创建user watcher，这里把传入的option的user置为true，然后如果设置了immediate为true，则先直接调用一次
+我们传入的callback，返回watcher的销毁方法。
+
+### 侦听属性依赖收集
+
+根据上面的分析，可以知道侦听属性也是通过Watcher来实现的，那么在new Watcher的时候，有这样的逻辑:
+
+    if (typeof expOrFn === 'function') {
+      this.getter = expOrFn
+    } else {
+      this.getter = parsePath(expOrFn)
+    }
+    ...
+    this.value = this.get()
+
+很显然，我们创建user watcher传入的exoOrFn是watch对象的key值，也就是一个字符串，所以Vue会调用parsePath，把expOrFn转化为一个函数，并赋值给getter方法
+
+#### parsePath
+
+    const bailRE = /[^\w.$]/
+    function parsePath (path: string): any {
+      if (bailRE.test(path)) {
+        return
+      }
+      const segments = path.split('.')
+      return function (obj) {
+        for (let i = 0; i < segments.length; i++) {
+          if (!obj) return
+          obj = obj[segments[i]]
+        }
+        return obj
+      }
+    }
+
+parsePath通过'.'来分割字符串，并且返回了一个函数，这个函数接收一个对象作为参数，通过我们分割字符串得到的路径来获取对象上的值，并返回。
+也就是说当我们调用user watcher的getter方法时，传入了当前的实例对象，getter方法就就返回根据expOrFn得到的路径对应的实例对象上的值:
+
+    data () {
+      return {       ->   vm.xx 
+        xx: 'xx'
+      }
+    }
+
+    watch: {
+      xx () {}    ->   parsePath('xx') ->  this.getter.call(vm, vm)  ->  return vm['xx']
+    }
+
+在访问实例对象上的值时，就会触发响应式属性的依赖收集，当响应式属性的值更改时，就会触发user watcher的update方法。
+
+### 侦听属性回调的执行
+
+    if (this.computed) {
+      this.dirty = true
+    } else if (this.sync) {
+      this.run()
+    } else {
+      queueWatcher(this)
+    }
+
+当触发user watcher的update方法时，如果在watch中设置了sync为true，则直接执行run方法，否则，就跟渲染watcher一样添加到缓冲队列，
+并在下一个tick中执行run方法，在run方法中执行getAndInvoke并传入我们定义的回调函数。
+
+    const value = this.get()
+    if (
+      value !== this.value ||
+      isObject(value) ||
+      this.deep
+    ) {
+      const oldValue = this.value
+      this.value = value
+      this.dirty = false
+      if (this.user) {
+        try {
+          cb.call(this.vm, value, oldValue)
+        } catch (e) {
+          handleError(e, this.vm, `callback for watcher "${this.expression}"`)
+        }
+      } else {
+        cb.call(this.vm, value, oldValue)
+      }
+    }
+
+在getAndInvoke重新执行get方法拿到新的value值，并进行比对，如果新旧值不相等或者新值是对象或者设置了deep为true，都会执行回调，并传入新旧值。
+
+#### traverse
+
+当我们watch一个对象，并设置deep为true时，不管修改了对象的哪个key，都会触发watch回调的执行。这是因为在调用get方法时，如果deep为true会执行traverse方法
+
+    // "touch" every property so they are all tracked as
+    // dependencies for deep watching
+    if (this.deep) {
+      traverse(value)
+    }
+
+Vue这里也有解释，通过traverse方法来"touch"响应式对象的每一个key，让每个key的dep都订阅当前的watcher
+
+    function _traverse (val: any, seen: SimpleSet) {
+      let i, keys
+      const isA = Array.isArray(val)
+      if ((!isA && !isObject(val)) || Object.isFrozen(val) || val instanceof VNode) {
+        return
+      }
+      if (val.__ob__) {
+        const depId = val.__ob__.dep.id
+        if (seen.has(depId)) {
+          return
+        }
+        seen.add(depId)
+      }
+      if (isA) {
+        i = val.length
+        while (i--) _traverse(val[i], seen)
+      } else {
+        keys = Object.keys(val)
+        i = keys.length
+        while (i--) _traverse(val[keys[i]], seen)
+      }
+    }
+
+traverse方法就是简单的对我们监听的对象进行遍历，当对象有__ob__属性时，并且通过一个set来保存depId，防止对象上有相互引用，导致无限循环。
