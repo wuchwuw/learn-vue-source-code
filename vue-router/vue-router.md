@@ -13,21 +13,7 @@ Vue Router是Vue.js官方的路由管理器，通过Vue Router我们可以很方
     const config = {
       input: {
         input: resolve('src/index.js'),
-        plugins: [
-          flow(),
-          node(),
-          cjs(),
-          replace({
-            __VERSION__: version
-          }),
-          buble()
-        ]
-      },
-      output: {
-        file: opts.file,
-        format: opts.format,
-        banner,
-        name: 'VueRouter'
+        ....
       }
     }
 
@@ -55,17 +41,12 @@ install方法将在Vue.use中作为插件的注册方法调用，如果不清楚
     const Bar = { template: '<div>bar</div>' }
 
     // 3. 定义路由
-    // 每个路由应该映射一个组件。 其中"component" 可以是
-    // 通过 Vue.extend() 创建的组件构造器，
-    // 或者，只是一个组件配置对象。
-    // 我们晚点再讨论嵌套路由。
     const routes = [
       { path: '/foo', component: Foo },
       { path: '/bar', component: Bar }
     ]
 
     // 4. 创建 router 实例，然后传 `routes` 配置
-    // 你还可以传别的配置参数, 不过先这么简单着吧。
     const router = new VueRouter({
       routes // (缩写) 相当于 routes: routes
     })
@@ -171,7 +152,7 @@ this._routerRoot._router指向的就是new Vue时传入的VueRouter实例，this
 
     const { pathList, pathMap, nameMap } = createRouteMap(routes)
 
-    function addRoutes () {...}  
+    function addRoutes () {...}
 
     function match () {...}
 
@@ -189,7 +170,7 @@ this._routerRoot._router指向的就是new Vue时传入的VueRouter实例，this
 可以看到createMatcher方法首先调用createRouteMap拿到pathList, pathMap, nameMap这三个变量，然后创建了addRoutes、match、redirect、alias、_createRoute这几个方法，最后返回了一个对象包含了match、addRoutes方法，这里我们主要先分析createRouteMap。
 
 #### createRouteMap
-    
+
     const pathList = oldPathList || []
     const pathMap = oldPathMap || Object.create(null)
     const nameMap = oldNameMap || Object.create(null)
@@ -354,34 +335,241 @@ createRouteMap首先创建了pathList、pathMap、nameMap三个变量，然后�
     }
 
 可以看到创建HTML5History实例的过程中，监听了浏览器的popstate事件，每次当浏览器前进或者回退时，将触发popstate事件，此外Vue Router实例中的push、replace方法
-都是调用history实例中的push、replace，不管是popstate事件、还是push、replace方法最终都是调用transitionTo方法来完成一次路由的切换。
+都是调用history实例中的push、replace，而这些方法最终都是执行浏览器原生的history.pushState和history.replaceState方法。不过无论是popstate事件、还是push、
+replace方法最终都是调用transitionTo方法来完成一次路由的切换。transitionTo方法定义在HTML5History的父类History中，这里我们先不分析transitionTo这个方法，因
+为我们主要的目的还是了解HTML5History实例创建的过程。
 
-### VueRouter init()
+分析完Vue Router实例的主要创建过程之后，我们回到之前在install方法中通过Vue.mixin传入的beforeCreate钩子中，当我们创建好Vue Router实例后，就会调用new Vue来
+传入我们生成的Vue Router实例，在new Vue的过程中，根组件将被实例化，这时候就会调用根组件的beforeCreate钩子，也就是会调用Vue Router实例上的init方法。
+
+#### VueRouter init()
 
     this.apps.push(app)
 
     const history = this.history
+    ...
+    history.transitionTo(history.getCurrentLocation())
+    ...
+    history.listen(route => {
+      this.apps.forEach((app) => {
+        app._route = route
+      })
+    })
 
+init方法首先将传进来的根组件实例push到apps中，这是因为一个Vue应用可能存在多个Vue实例，不过不太常用。然后拿到之前创建的HTML5History的实例并且调用一次transitionTo
+方法来完成第一次路由切换，传入的参数是通过history.getCurrentLocation方法返回的当前的location，简单来说就是返回URL除去域名的部分，例如:
 
-init方法首先将传进来的根组件实例push到apps中，这是因为一个Vue应用可能存在多个Vue实例，不过并不常用。然后根据不同的history来调用他们的transitionTo方法，history
-的创建是在new VueRouter的时候，可以看到根据我们传进来的mode选择创建不同的history实例，这里选择我们经常用的history模式来分析。
+    如果第一次进来的url是: https://github.com  那么传入的location就是 '/'
+    如果第一次进来的url是: https://github.com/wuch1995?xx=xx  那么传入的location就是 '/wuch1995?xx=xx'
 
-      switch (mode) {
-        case 'history':
-          this.history = new HTML5History(this, options.base)
-          break
-        case 'hash':
-          this.history = new HashHistory(this, options.base, this.fallback)
-          break
-        case 'abstract':
-          this.history = new AbstractHistory(this, options.base)
-          break
-        default:
-          if (process.env.NODE_ENV !== 'production') {
-            assert(false, `invalid mode: ${mode}`)
-          }
+具体的getCurrentLocation方法你可以自己去分析，其实就是简单的字符串拼接。
+
+<!-- 最后通过history.listen来监听一个函数，可以看到这个函数接收了一个route参数，并把它赋值到根组件实例上的_route属性，是不是有点眼熟？我们之前
+分析install方法时候有提到根组件在调用beforeCreate的时候会通过Vue.util.defineReactive(this, '_route', this._router.history.current)，往根组件实例上添加
+一个响应式属性_route，而这个_route的初始值是history实例上的current，我们先不管这个值是什么，只需要知道 -->
+
+#### transitionTo
+
+transitionTo方法定义在history/base.js中
+
+    const route = this.router.match(location, this.current)
+
+    this.confirmTransition(route, () => { ... })
+
+首先，通过传入的location和this.current拿到下一个路由的route对象，那么this.router.match调用的就是我们createMathcer返回的对象中的match方法，我们可以回到这个方法看一下。
+
+### match
+
+    const location = normalizeLocation(raw, currentRoute, false, router)
+    const { name } = location
+
+    const record = nameMap[name]
+
+    if (record) {
+      return _createRoute(record, location, redirectedFrom)
+    } else {
+      if (matchRoute(record.regex, location.path, location.params)) {
+        return _createRoute(record, location, redirectedFrom)
       }
+    }
 
-### HTML5History
+首先将我们传入的location进行格式化，如果传入的location是字符串的话，会被转化成一个location对象，接着通过location的name来拿到我们之前生成的record，如果路由配置里没有写name这个属性，那么就通过正则表达式来匹配record，拿到recored后通过_createRoute来生成下一个路由的route对象。
 
-    
+#### createRoute
+
+    const route: Route = {
+      name: location.name || (record && record.name),
+      meta: (record && record.meta) || {},
+      path: location.path || '/',
+      hash: location.hash || '',
+      query,
+      params: location.params || {},
+      fullPath: getFullPath(location, stringifyQuery),
+      matched: record ? formatMatch(record) : []
+    }
+    return Object.freeze(route)
+
+createRoute通过我们传入的location和record来创建route对象，并调用Object.freeze禁止修改route，这里我们可以总结一下创建route的过程：
+
+    location  ->  record
+    record + location + currentRoute -> new route
+
+创建完route之后，我们回到transitionTo中，接下来就是执行confirmTransition这个方法，并传入我们创建好的route。
+
+
+#### confirmTransition
+
+confirmTransition逻辑比较多，但是我们可以分成以下几部分来分析：
+
+1、拿到将要执行的所有钩子并push到队列中
+
+2、依次执行所有钩子
+
+3、完成一次路由的切换，更新currentRoute，并且触发视图的重新渲染。
+
+
+首先我们来看在一次路由的切换中，Vue Router将会执行什么钩子，并且他们的执行顺序是怎样的？以下是从Vue Router的官网中拷贝来的：
+
+    导航被触发。
+    在失活的组件里调用离开守卫。
+    调用全局的 beforeEach 守卫。
+    在重用的组件里调用 beforeRouteUpdate 守卫 (2.2+)。
+    在路由配置里调用 beforeEnter。
+    解析异步路由组件。
+    在被激活的组件里调用 beforeRouteEnter。
+    调用全局的 beforeResolve 守卫 (2.5+)。
+    导航被确认。
+    调用全局的 afterEach 钩子。
+    触发 DOM 更新。
+    用创建好的实例调用 beforeRouteEnter 守卫中传给 next 的回调函数。
+
+可以看到这里面有全局的钩子，也包含组件内的钩子。而这里面存在这几个定义：失活的组件、重用的组件、被激活的组件，接下来我们就将分析这几个定义。
+
+    const {
+      updated,
+      deactivated,
+      activated
+    } = resolveQueue(this.current.matched, route.matched)
+
+可以看到在confirmTransition方法中先会调用resolveQueue来拿到deactivated、updated、activated，这也就是失活的组件、重用的组件、被激活的组件。我们可以通过一个
+例子来说明这三个变量到底包含了什么，比如当前path是'/bar/foo',而将要跳转path是'/bar',那么：
+
+    this.current.matched = [
+      rootRecord, barRecord, fooRecord
+    ]
+
+    this.route = [
+      rootRecord, barRecord
+    ]
+
+    deactivated = [fooRecord]
+
+    updated = [rootRecord, barRecord]
+
+    activated = []
+
+也就是说，route中的matched属性包含了当前path中的record以及它的所有父record，deactivated、activated就是他们的差集，updated就是他们的交集。并且拿到record上
+的组件实例，返回实例上相应的钩子：
+
+    const queue: Array<?NavigationGuard> = [].concat(
+      // in-component leave guards
+      extractLeaveGuards(deactivated),       // 失活组件的beforeRouteLeave
+      // global before hooks
+      this.router.beforeHooks,               // 全局beforeEach钩子
+      // in-component update hooks
+      extractUpdateHooks(updated),           // 重用的组件beforeRouteUpdate钩子
+      // in-config enter guards
+      activated.map(m => m.beforeEnter),     // 被激活组件的路由配置里的beforeEnter钩子
+      // async components
+      resolveAsyncComponents(activated)      // 解析异步路由组件
+    )
+
+接下来我们分析一下这个队列的执行：
+
+    const iterator = (hook: NavigationGuard, next) => {
+      hook(route, current, () => {
+        next()
+      })
+    }
+
+    runQueue(queue, iterator, () => {
+      const enterGuards = extractEnterGuards(activated, postEnterCbs, isValid)
+      const queue = enterGuards.concat(this.router.resolveHooks)
+      runQueue(queuem iterator, () => {})
+    })
+
+    function runQueue (queue: Array<?NavigationGuard>, fn: Function, cb: Function) {
+      const step = index => {
+        if (index >= queue.length) {
+          cb()
+        } else {
+          if (queue[index]) {
+            fn(queue[index], () => {
+              step(index + 1)
+            })
+          } else {
+            step(index + 1)
+          }
+        }
+      }
+      step(0)
+    }
+
+简化执行的代码后可以看到，runQueue传入了将要执行的队列，一个迭代的函数iterator，还有队列执行完之后执行的回调函数，
+在runQueue中定义了step方法并传入index，通过index来判断队列是否执行完毕，如果index大于或等于队列的长度，则执行回调函数，
+否则就调用iterator并传入当前要执行的函数，以及stpe(index + 1)，当传入iterator的函数也就是hook执行完毕时，调用next()
+也就是step(index + 1)顺序执行队列中的下一个函数。在这里我们也可以回想一下平时定义的路由钩子，每个路由钩子都可以接收3个参数，
+to、from、next，当我们执行完一个钩子之后，都会调用next来执行下一个钩子，当我们执行钩子内的next时，就会执行iterator中hook传
+入的回调函数从而执行下一个钩子。
+
+当整个queue执行完毕时，在回调函数中又执行了以下的逻辑：
+
+    // 被激活的组件里的beforeRouteEnter钩子
+    const enterGuards = extractEnterGuards(activated, postEnterCbs, isValid)
+    // 调用全局的 beforeResolve钩子
+    const queue = enterGuards.concat(this.router.resolveHooks)
+    runQueue(queuem iterator, () => {
+      onComplete(route)
+    })
+
+因为这里必须等到异步组件加载完毕才可以拿到异步组件的实例，也就是说要等到queue执行完毕之后才可以拿到激活组件的钩子。拿到激活组件的钩子
+之后，又继续执行一遍runQueue，把剩余的钩子执行完毕。当所有钩子执行完毕之后，在第二个runQueue的回调函数中会执行onComplete方法，此时
+路由的切换就完成了，同时就会触发视图的重新渲染。
+
+### 组件重新渲染
+
+onComplete是在调用confirmTransition中传入的，而触发重新渲染的关键逻辑就是：
+
+    this.updateRoute(route)
+
+    // this.updateRoute
+    updateRoute (route: Route) {
+      const prev = this.current
+      this.current = route
+      this.cb && this.cb(route)
+      this.router.afterHooks.forEach(hook => {
+        hook && hook(route, prev)
+      })
+    }
+
+updateRoute将替换当前的currentRoute，并且调用this.cb，而this.cb这个函数的赋值发生在我们调用Vue Router实例的init方法中：
+
+    history.listen(route => {
+      this.apps.forEach((app) => {
+        app._route = route
+      })
+    })
+
+    // history.listen
+    listen (cb: Function) {
+      this.cb = cb
+    }
+
+也就是说当this.cb执行时，根组件上的_route属性将会被替换成当前的currentRoute，而_route属性是在执行install方法时，通过defineReactive
+挂载到根组件实例上的，也就是说它是一个响应式的属性：
+
+    Vue.util.defineReactive(this, '_route', this._router.history.current)
+
+所以当_route属性被重新赋值时，就会触发视图的重新渲染。一旦视图重新渲染，router-view组件就可以重新拿到组件的定义来渲染对应的组件。
+那么router-view是如何知道它将要渲染什么组件，以及对于多个router-view组件嵌套的情况，它又是如何来处理的呢？接下来我们就来分析
+router-view组件的源码，了解它的实现原理。
