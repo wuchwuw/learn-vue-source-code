@@ -80,13 +80,8 @@ updateComponent执行的是_update()方法，它会传入_render()方法的返�
     vnode.parent = _parentVnode
     return vnode
 
-_render其实很简单，就是拿到我们定义在组件的render方法，并且执行它，通过执行render方法得到vnode。[webpack]
-这里我们可以打印一下render函数出来看看，
-Vue在2.0的时候引入了vnode的概念，简单来说，vnode就是一个对象，用来描述dom节点的信息。关于vnode的介绍，请移步[vnode以及Vue中一些关于vnode的概念，必看!!]()
-这里还有几个点要记住的。我们可以看到在组件实例vm上有一个$vnode的属性，这个是占位符vnode，比如我们在一个组件中引入App组件:
-
-    // 那么在模板中<App></App>节点生成的vnode就代表着App组件的占位符vnode
-    <div><App></App></div>
+_render其实很简单，就是拿到我们定义在组件的render方法，并且执行它，通过执行render方法得到vnode。
+Vue在2.0的时候引入了vnode的概念，简单来说，vnode就是一个对象，用来描述DOM节点的信息。关于vnode的介绍，请移步[vnode以及Vue中一些关于vnode的概念，必看!!](./vnode.md)。
 
 返回创建好的vnode之后，_update函数就会被调用。
 
