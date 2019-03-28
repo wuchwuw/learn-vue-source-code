@@ -47,7 +47,7 @@ createComponent传入了几个参数
 
     Ctor: Class<Component> | Function | Object | void,  // 组件定义，vue-loader会把通过import引入的组件定义变成一个对象
     data: ?VNodeData,           // 标签上定义的属性
-    context: Component,         
+    context: Component,
     children: ?Array<VNode>,    // 写在组件中的内容，用来实现slot
     tag?: string
 
@@ -154,3 +154,5 @@ patch阶段是vnode -> DOM的过程，这时候会调用createElm去创建真实
 
 此时子组件已经patch完成，并且将组件的真实DOM挂载在实例的$el属性上，这里拿到$el属性，并赋值给占位符vnode的elm属性。
 执行完initComponent后，调用insert方法将子组件的真实DOM插入到父组件中。
+
+下一篇:[响应式原理](../响应式原理/state.md)

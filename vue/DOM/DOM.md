@@ -222,3 +222,5 @@ insert方法很简单，就是把我们生成的节点插入到父节点中。
 
 那么简单总结一下patch的过程，其实就是递归的调用createElm，通过vnode上面保存的dom节点的信息来生成真实的dom节点，并保存在
 vnode的elm属性上，然后通过每次传入下一个要创建的vnode，以及当前vnode的elm属性作为下一个vnode生成的真实节点的父节点来调用createElm，在遍历完chlidren时，在递归回溯的过程中调用insert方法来插入子节点。从而完成组件的patch过程，通过分析，我们也得知，组件的patch过程中，节点的插入顺序是先子后父的。
+
+下一篇:[组件化](../组件化/component.md)

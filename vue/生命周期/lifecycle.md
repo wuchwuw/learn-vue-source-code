@@ -126,3 +126,5 @@ parent updated -> child updated
     callHook(vm, 'destroyed')
 
 断开销毁组件与它的父组件之间的联系，将实例上的watcher teardown等等，当销毁完毕时，调用destroyed钩子。
+
+下一篇:[计算属性和侦听属性](./计算属性和侦听属性/computed_watch.md)

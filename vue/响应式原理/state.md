@@ -428,3 +428,5 @@ microTimerFunc走的是微任务，调用的是Promise.then。
 因为当我们修改数据时，首先会触发重新渲染，并将flushSchedulerQueue放入到nextTick中等待执行，此时如果我们直接执行DOM操作，那么DOM操作在组件
 重新渲染之前已经执行了，而如果把DOM操作放到nextTick中，它将和flushSchedulerQueue一起被放进callbacks中顺序执行，这样就确保了我们的DOM操作
 是在组件更新之后执行的。
+
+下一篇:[生命周期](../生命周期/lifecycle.md)
